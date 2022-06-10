@@ -26,7 +26,7 @@ pub mod conversation {
 
     /// Empties out the message string, but the account record remains
     pub fn delete_message(ctx: Context<DeleteMessage>) -> Result<()> {
-        ctx.accounts.message.message = [0;32]; //empty out the message
+        ctx.accounts.message.message = [0; 32]; //empty out the message
         Ok(())
     }
 }
@@ -70,6 +70,7 @@ impl ConversationTracker {
     pub const SIZE: usize = (2 * 32) + 1 + 1;
 }
 
+// FIXME error in giving message pda the conversation_tracker.conversation_nonce. (sig verification fails)
 #[derive(Accounts)]
 pub struct SendMessage<'info> {
     #[account(mut)]
@@ -124,7 +125,7 @@ pub struct DeleteMessage<'info> {
         seeds =[
         sender.key().as_ref(),
         receiver.key().as_ref(),
-        &[conversation_tracker.conversation_nonce],
+        // &[conversation_tracker.conversation_nonce],
         b"conversation_message"
         ],
         bump = message.bump_seed,

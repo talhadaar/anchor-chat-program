@@ -60,13 +60,14 @@ describe("conversation", () => {
   let trackerData = null;
   let messageData = null;
 
+  const MAX_MESSAGE_SIZE = 32;
+  const EMPTY_MESSAGE = Array<number>(MAX_MESSAGE_SIZE);
+
   it("Alice initialized conversation with Bhai", async () => {
     [conversationTracker, conversationTrackerBumpSeed] = await createConversationTrackerPda(program.programId, initializer, initializedWith);
 
-    // program.methods.sendMessage("a messageee")
     await program.methods.initialize().accounts({
       initializer: initializer,
-      // initializer: programProvider.wallet.publicKey,
       initializedWith: initializedWith,
       conversationTracker,
     }).signers([]).rpc();
@@ -80,18 +81,18 @@ describe("conversation", () => {
 
   it("Alice says hello to bhai!", async () => {
     let sender = initializer;
-    let receiver = bhai;
-    let [messagePda, messagePdaBump] = await createMessagePda(program.programId, sender, receiver.publicKey, trackerData.bumpSeed);
+    let receiver = bhai.publicKey;
+    let [messagePda, messagePdaBump] = await createMessagePda(program.programId, sender, receiver, trackerData.bumpSeed);
 
     // [u8;32] is expected by Borsh as InstructionData, so we use pubkeys for convenience.
     let bhaiMessage = initializedWith.toBytes();
     for (let i = 0; i < bhaiMessage.length; i++) {
       message[i] = bhaiMessage[i];
     }
-
+    // FIXME error in giving message pda the conversation_tracker.conversation_nonce. (sig verification fails)
     await program.methods.sendMessage(message).accounts({
       sender: sender,
-      receiver: receiver.publicKey,
+      receiver,
       conversationTracker,
       message: messagePda
     })
@@ -106,5 +107,22 @@ describe("conversation", () => {
 
     // save the message address with its conversation nonce
     messages.set(trackerData.conversationNonce-1, messagePda);
+  });
+
+  it("Alice deletes a message",async ()=>{
+    let sender = initializer;
+    let receiver = bhai.publicKey;
+    let message = messages.get(trackerData.conversationNonce-1);
+    await program.methods.deleteMessage().accounts({
+      sender,
+      receiver,
+      conversationTracker,
+      message
+    })
+    .signers([])
+    .rpc();
+
+    messageData = await program.account.message.fetch(message);
+    expect(messageData.message.every(val => val === 0)).to.equal(true);
   });
 });
