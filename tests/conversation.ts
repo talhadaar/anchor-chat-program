@@ -1,5 +1,8 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
+import { SplTokenInstructionCoder } from "@project-serum/anchor/dist/cjs/coder/spl-token/instruction";
+import { TOKEN_PROGRAM_ID } from "@project-serum/anchor/dist/cjs/utils/token";
+import { BN } from "bn.js";
 import { expect } from "chai";
 import { Conversation } from "../target/types/conversation";
 
@@ -20,7 +23,7 @@ export const createConversationTrackerPda = async (
   sender: anchor.web3.PublicKey,
   receiver: anchor.web3.PublicKey,
 ): Promise<[anchor.web3.PublicKey, number]> => {
-  let seeds = [sender.toBytes(), receiver.toBytes(), Buffer.from("conversation_tracker")];
+  let seeds = [sender.toBuffer(), receiver.toBuffer(), anchor.utils.bytes.utf8.encode("conversation_tracker")];
   return await anchor.web3.PublicKey.findProgramAddress(seeds, programId);
 }
 
@@ -30,7 +33,7 @@ export const createMessagePda = async (
   receiver: anchor.web3.PublicKey,
   messageNonce: number
 ): Promise<[anchor.web3.PublicKey, number]> => {
-  let seeds = [sender.toBytes(), receiver.toBytes(), numberToLeBytes(messageNonce, 1), Buffer.from("conversation_message")];
+  let seeds = [sender.toBuffer(), receiver.toBuffer(), numberToLeBytes(messageNonce, 1), anchor.utils.bytes.utf8.encode("user-conversation_message")];
   return await anchor.web3.PublicKey.findProgramAddress(seeds, programId);
 }
 
@@ -38,36 +41,32 @@ describe("conversation", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
   const program = anchor.workspace.Conversation as Program<Conversation>;
+  const programProvider = program.provider as anchor.AnchorProvider;
 
-  // const alice = (program.provider as anchor.AnchorProvider).wallet;
-  const alice = anchor.web3.Keypair.generate();
-  const bob = anchor.web3.Keypair.generate();
-
-  // program.provider.connection.requestAirdrop(alice.publicKey, anchor.web3.LAMPORTS_PER_SOL * 1000);
-  // program.provider.connection.requestAirdrop(bob.publicKey, anchor.web3.LAMPORTS_PER_SOL * 1000);
+  const bhai = anchor.web3.Keypair.generate();
+  const initializer = programProvider.wallet.publicKey;
+  const initializedWith = bhai.publicKey;
 
   // the index is message_nonce of the message PDA account
   const messages: anchor.web3.PublicKey[] = [];
   let conversationTracker: anchor.web3.PublicKey = null;
   let conversationTrackerBumpSeed: number = null;
-  const systemProgram = anchor.web3.SystemProgram.programId;
 
-  it("Alice initialized conversation", async () => {
-    let initializer = alice.publicKey;
-    let initializedWith = bob.publicKey;
-    let [conversationTracker, conversationTrackerBumpSeed] = await createConversationTrackerPda(program.programId, alice.publicKey, bob.publicKey);
-    
-    let tx = await program.methods.initialize().accounts({
-      initializer,
-      initializedWith,
-      conversationTracker
-    })
-    .signers([alice])
-    .rpc();
-    
-    // let trackerData = await program.account.conversationTracker.fetch(conversationTracker);
+  it("Alice initialized conversation with Bhai", async () => {
+    let [conversationTracker, conversationTrackerBumpSeed] = await createConversationTrackerPda(program.programId, initializer, initializedWith);
 
-    // expect(trackerData.conversationalists[0]).to.equal(alice.publicKey);
-    // expect(trackerData.conversationalists[1]).to.equal(bob.publicKey);
+    // program.methods.sendMessage("a messageee")
+    let ix = await program.methods.initialize().accounts({
+      initializer: initializer,
+      // initializer: programProvider.wallet.publicKey,
+      initializedWith: initializedWith,
+      conversationTracker,
+    }).signers([]).rpc();
+
+    let trackerData = await program.account.conversationTracker.fetch(conversationTracker);
+    expect(trackerData.bumpSeed).to.equal(conversationTrackerBumpSeed);
+
+    expect(trackerData.initializer.toBase58()).to.equal(initializer.toBase58());
+    expect(trackerData.initializedWith.toBase58()).to.equal(initializedWith.toBase58());
   });
 });
